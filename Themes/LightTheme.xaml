@@ -1,0 +1,35 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Светлая тема. Содержит ТОЛЬКО цвета/кисти.
+         Все стили лежат в Styles.xaml и ссылаются на эти ключи через DynamicResource,
+         поэтому смена темы в рантайме перекрашивает весь интерфейс. -->
+
+    <SolidColorBrush x:Key="Brush.Window.Background" Color="#FFF5F6F8"/>
+    <SolidColorBrush x:Key="Brush.Surface"           Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="Brush.SurfaceAlt"        Color="#FFECEEF1"/>
+
+    <SolidColorBrush x:Key="Brush.Text.Primary"      Color="#FF1A1A1A"/>
+    <SolidColorBrush x:Key="Brush.Text.Secondary"    Color="#FF6B6B6B"/>
+
+    <SolidColorBrush x:Key="Brush.Control.Background"   Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="Brush.Control.Border"       Color="#FFBDBDBD"/>
+    <SolidColorBrush x:Key="Brush.Control.BorderHover"  Color="#FF3C7FB1"/>
+
+    <SolidColorBrush x:Key="Brush.Accent"      Color="#FF2D7DD2"/>
+    <SolidColorBrush x:Key="Brush.Accent.Text" Color="#FFFFFFFF"/>
+
+    <SolidColorBrush x:Key="Brush.Button.Background" Color="#FFEDEDED"/>
+    <SolidColorBrush x:Key="Brush.Button.Hover"      Color="#FFDCEBFA"/>
+    <SolidColorBrush x:Key="Brush.Button.Pressed"    Color="#FFC4E0F5"/>
+
+    <SolidColorBrush x:Key="Brush.Status.Error"   Color="#FFE4511A"/>
+    <SolidColorBrush x:Key="Brush.Status.Success" Color="#FF2E9E3F"/>
+
+    <!-- Иконки и кастомный тайтлбар -->
+    <SolidColorBrush x:Key="Brush.Icon"        Color="#FF4A4A4A"/>
+    <SolidColorBrush x:Key="Brush.Icon.Muted"  Color="#FF7A7A7A"/>
+    <SolidColorBrush x:Key="Brush.Titlebar"    Color="#FFECEEF1"/>
+
+</ResourceDictionary>

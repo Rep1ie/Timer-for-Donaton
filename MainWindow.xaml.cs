@@ -1,11 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.IO;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Timer_for_Donaton.Classes;
 
 namespace Timer_for_Donaton
@@ -15,18 +12,19 @@ namespace Timer_for_Donaton
     /// </summary>
     public partial class MainWindow : Window
     {
-        // Создание общего экземпляра для всех классов проекта
         public TimerWebSocket TimerWebSocketInstance { get; private set; }
         public MoneyTimeConverter MoneyTimeConverterInstance { get; private set; }
-        public DonationWatcher DonationWatcherInstance { get; private set; }
+        public DonationAlertsClient DonationAlertsInstance { get; private set; }
+        public DonatePayClient DonatePayInstance { get; private set; }
         public AppConfig AppConfigInstance { get; private set; }
 
         private Settings settings_window;
         private readonly Logger _logger;
 
-        private string APP_DIRECTORY = AppDomain.CurrentDomain.BaseDirectory;
+        private readonly string APP_DIRECTORY = AppDomain.CurrentDomain.BaseDirectory;
         public static bool isTimerOn = false;
         public long total_seconds = 0;
+        private bool _timerLoopRunning = false;
 
         public MainWindow()
         {
@@ -34,299 +32,252 @@ namespace Timer_for_Donaton
 
             TimerWebSocketInstance = new TimerWebSocket();
             MoneyTimeConverterInstance = new MoneyTimeConverter();
+            DonationAlertsInstance = new DonationAlertsClient();
+            DonatePayInstance = new DonatePayClient();
             AppConfigInstance = new AppConfig();
 
             _logger = new Logger(this);
 
-            var config = AppConfigInstance.LoadConfig();  // Загружаем конфиг настроек приложения
+            var config = AppConfigInstance.LoadConfig();
 
-            // Присваеваем текущему времени таймера время из сохраненного конфига
-            long remaining_time = LoadRemainingTime();
-            total_seconds = remaining_time;
-            Timer_TextBox.Text = TimeСipher();
+            // Применяем сохранённую тему
+            ThemeManager.Apply(config.DarkTheme ? ThemeManager.AppTheme.Dark : ThemeManager.AppTheme.Light);
+            UpdateThemeButton();
 
-            DonationWatcherInstance = new DonationWatcher();
-            DonationWatcherInstance.OnAnswerRecieved += OnAnswerRecieved;  // Создаем метод OnAnswerRecieved, принимающий ответы от py скрипта
-
-            // Отправляем в калькулятор курс времени к рублю
-            MoneyTimeConverterInstance.CurrentCourse(PlusTime: config.PlusTime, MinusMoney: config.MinusMoney);
-
+            total_seconds = LoadRemainingTime();
+            Timer_TextBox.Text = TimeCipher();
             Timer_TextBox.MaxLength = 10;
 
-            // События на уменьшение/добавление времени к таймеру 
-            if (total_seconds >= 0)
+            // Курс времени к рублю
+            MoneyTimeConverterInstance.SetRate(config.PlusTime, config.MinusMoney);
+
+            // События DonationAlerts
+            DonationAlertsInstance.OnDonation += HandleDonation;
+            DonationAlertsInstance.OnConnected += () => Dispatcher.Invoke(SetDonationAlertsConnected);
+            DonationAlertsInstance.OnError += msg => Dispatcher.Invoke(() => MessageBox.Show(msg));
+
+            // События DonatePay
+            DonatePayInstance.OnDonation += HandleDonation;
+            DonatePayInstance.OnConnected += () => Dispatcher.Invoke(SetDonatePayConnected);
+            DonatePayInstance.OnError += msg => Dispatcher.Invoke(() => MessageBox.Show(msg));
+
+            // Кнопки +/− (общая логика вместо четырёх дублирующихся веток)
+            PlusTime_Button.Click += (s, e) => AdjustTime(+1);
+            MinusTime_Button.Click += (s, e) => AdjustTime(-1);
+
+            // Автоподключение при старте (если включено в настройках)
+            if (config.AutoConnect)
             {
-                PlusTime_Button.Click += (s, e) =>
-                {
-                    if (IsNumeric(PlusMinusTime_TextBox.Text))
-                    {
-                        if (Currency_ComboBox.Text == "Ч")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds += Convert.ToInt64(PlusMinusTime_TextBox.Text) * 3600;
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else if (Currency_ComboBox.Text == "м")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds += Convert.ToInt64(PlusMinusTime_TextBox.Text) * 60;
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else if (Currency_ComboBox.Text == "с")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds += Convert.ToInt64(PlusMinusTime_TextBox.Text);
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds += MoneyTimeConverterInstance.ConvertMoneyToTime(PlusMinusTime_TextBox.Text);
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                    }
-                };
-                MinusTime_Button.Click += (s, e) =>
-                {
-                    if (IsNumeric(PlusMinusTime_TextBox.Text))
-                    {
-                        if (Currency_ComboBox.Text == "Ч")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds -= Convert.ToInt64(PlusMinusTime_TextBox.Text) * 3600;
-                            NegativeTimeCheck();
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else if (Currency_ComboBox.Text == "м")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds -= Convert.ToInt64(PlusMinusTime_TextBox.Text) * 60;
-                            NegativeTimeCheck();
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else if (Currency_ComboBox.Text == "с")
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds -= Convert.ToInt64(PlusMinusTime_TextBox.Text);
-                            NegativeTimeCheck();
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                        else
-                        {
-                            total_seconds = TimeDecipher(Timer_TextBox.Text);
-                            total_seconds -= MoneyTimeConverterInstance.ConvertMoneyToTime(PlusMinusTime_TextBox.Text);
-                            NegativeTimeCheck();
-                            Timer_TextBox.Text = TimeСipher();
-                        }
-                    }
-                };
+                if (!string.IsNullOrWhiteSpace(config.DALink))
+                    _ = DonationAlertsInstance.StartAsync(Timer_for_Donaton.Settings.ExtractAccessToken(config.DALink));
+                if (!string.IsNullOrWhiteSpace(config.DonatePayToken))
+                    _ = DonatePayInstance.StartAsync(config.DonatePayToken.Trim());
+                if (!TimerWebSocketInstance.IsServerStarted)
+                    _ = TimerWebSocketInstance.StartServer();
             }
         }
 
-        // Асинхронный метод по инициализации таймера
-        async private void InitializeTimer()
+        // ---------------- Таймер ----------------
+
+        private async void InitializeTimer()
         {
-            NegativeTimeCheck(); // Проверка, не равно общее кол-во секунд нулю? (с самого запуска)
-            while (isTimerOn)
+            if (_timerLoopRunning) return; // защита от двойного запуска при быстрых кликах
+            _timerLoopRunning = true;
+            try
             {
-                total_seconds--;
-                Timer_TextBox.Text = TimeСipher();
-
-                // Передаём остаток времени в экземпляр TimerWebSocket
-                TimerWebSocketInstance.UpdateTime(TimeСipher());
-
-                if (NegativeTimeCheck()) break;
-                await Task.Delay(1000);
+                if (NegativeTimeCheck()) return;
+                // Дрейф-устойчивый отсчёт: считаем реально прошедшее время по монотонным часам
+                // (Stopwatch), а не суммируем интервалы Task.Delay. Даже если программа
+                // подлагивает или тик задержался, вычтем ровно столько секунд, сколько
+                // прошло на самом деле — за дни накопленной ошибки не будет.
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                long applied = 0; // сколько секунд уже вычтено за текущий запуск отсчёта
+                while (isTimerOn)
+                {
+                    await System.Threading.Tasks.Task.Delay(250);
+                    long elapsed = sw.ElapsedMilliseconds / 1000; // целых секунд реально прошло
+                    long delta = elapsed - applied;
+                    if (delta <= 0) continue; // целая секунда ещё не набралась
+                    total_seconds -= delta;
+                    applied = elapsed;
+                    Timer_TextBox.Text = TimeCipher();
+                    TimerWebSocketInstance.UpdateTime(TimeCipher());
+                    if (NegativeTimeCheck()) break;
+                }
+            }
+            finally
+            {
+                _timerLoopRunning = false;
             }
         }
 
-        // Проверка, чтобы время было выше 0
         private bool NegativeTimeCheck()
         {
             if (total_seconds <= 0)
             {
                 isTimerOn = false;
                 total_seconds = 0;
-                Timer_TextBox.Text = TimeСipher();
+                Timer_TextBox.Text = TimeCipher();
                 ChangeStartIcon();
                 return true;
             }
-            else
-            {
-                return false;
-            }
+            return false;
         }
 
-        // Смена иконки у кнопки старта/паузы
         private void ChangeStartIcon()
         {
-            if (isTimerOn)
-            {
-                StartImage.Source = new BitmapImage(new Uri("/Resources/icon_pause.png", UriKind.Relative));
-                StartImage.Width = 32;
-                StartImage.Height = 32;
-            }
-            else
-            {
-                StartImage.Source = new BitmapImage(new Uri("/Resources/icon_start.png", UriKind.Relative));
-                StartImage.Width = 29;
-                StartImage.Height = 29;
-            }
-
+            // Векторная иконка из Icons.xaml — цвет берётся из темы, не пикселизуется.
+            StartIcon.Data = (Geometry)FindResource(isTimerOn ? "Icon.Pause" : "Icon.Play");
+            double size = isTimerOn ? 24 : 26;
+            StartIcon.Width = size;
+            StartIcon.Height = size;
         }
 
-        // Перевести время из вида "часы:минуты:секунды" в общее кол-во секунд
-        private long TimeDecipher(string CipheredTime)
+        private long TimeDecipher(string cipheredTime)
         {
-            List<int> colons = new List<int>()
-            {
-                CipheredTime.IndexOf(":"), CipheredTime.IndexOf(":", CipheredTime.IndexOf(":")+1)
-            };
-            long hours = Convert.ToInt64($"{CipheredTime.Substring(0, colons[0])}");
-            long minutes = Convert.ToInt64($"{CipheredTime.Substring(colons[0]+1, 2)}");
-            long seconds = Convert.ToInt64($"{CipheredTime.Substring(colons[1]+1)}");
-            long total_seconds = (hours*3600) + (minutes*60) + seconds;
-            return total_seconds;
+            var parts = cipheredTime.Split(':');
+            long hours = Convert.ToInt64(parts[0]);
+            long minutes = Convert.ToInt64(parts[1]);
+            long seconds = Convert.ToInt64(parts[2]);
+            return (hours * 3600) + (minutes * 60) + seconds;
         }
 
-        // Перевести из общего кол-ва секунд в вид "часы:минуты:секунды"
-        private string TimeСipher()
+        private string TimeCipher()
         {
             long hours = total_seconds / 3600;
             long minutes = (total_seconds / 60) % 60;
             long seconds = total_seconds % 60;
-            string ciphered_time = $"{hours:D2}:{minutes:D2}:{seconds:D2}";
-            return ciphered_time;
+            return $"{hours:D2}:{minutes:D2}:{seconds:D2}";
         }
 
-        private bool IsNumeric(string input)
+        private static bool IsNumeric(string input) => long.TryParse(input, out _);
+
+        private void AdjustTime(int sign)
         {
-            int number;
-            bool isNumeric = int.TryParse(input, out number);
-            return isNumeric;
-        }
+            if (!IsNumeric(PlusMinusTime_TextBox.Text)) return;
 
-        private static string ExtractValue(string input, string key)
-        {
-            // Создание словаря для пар ключ-значение
-            var values = new Dictionary<string, string>();
+            long value = Convert.ToInt64(PlusMinusTime_TextBox.Text);
+            total_seconds = TimeDecipher(Timer_TextBox.Text);
 
-            // Разделение строки по запятой
-            var pairs = input.Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (var pair in pairs)
+            long delta;
+            switch (Currency_ComboBox.Text)
             {
-                // Разделение по двоеточию и удаление пробелов и обратных кавычек
-                var parts = pair.Split(new[] { ':' }, 2);
-                if (parts.Length == 2)
-                {
-                    var k = parts[0].Trim();
-                    var v = parts[1].Trim().Trim('`');
-                    values[k] = v;
-                }
+                case "Ч": delta = value * 3600; break;
+                case "м": delta = value * 60; break;
+                case "с": delta = value; break;
+                default: delta = MoneyTimeConverterInstance.ConvertMoneyToTime(value); break; // ₽
             }
 
-            // Извлечение значения по ключу
-            return values.TryGetValue(key, out var value) ? value : null;
+            total_seconds += sign * delta;
+            if (sign < 0) NegativeTimeCheck();
+            Timer_TextBox.Text = TimeCipher();
+        }
+
+        // ---------------- Обработка донатов (единая для всех сервисов) ----------------
+
+        private void HandleDonation(Donation donation)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                string date = DateTime.Now.ToString();
+
+                if (donation.AddsTime)
+                {
+                    total_seconds = TimeDecipher(Timer_TextBox.Text);
+                    long addSeconds = MoneyTimeConverterInstance.ConvertMoneyToTime(donation.Amount.Value);
+                    total_seconds += addSeconds;
+                    Timer_TextBox.Text = TimeCipher();
+                    if (isTimerOn) TimerWebSocketInstance.UpdateTime(TimeCipher());
+
+                    _logger.Log(donation.Service,
+                        $"{date} (Донат) — {donation.Username} отправил {donation.Amount} {donation.Currency} " +
+                        $"(Добавлено {addSeconds} секунд к таймеру)",
+                        isDonation: true, addedSeconds: addSeconds);
+                }
+                else
+                {
+                    // Неденежное событие (Twitch): только лог
+                    _logger.Log(donation.Service, $"{date} {donation.RawText}");
+                }
+            });
+        }
+
+        /// <summary>Откат доната: вычитает ранее начисленное время из таймера (вызывается из окна логов).</summary>
+        public void RollbackSeconds(long seconds)
+        {
+            if (seconds <= 0) return;
+            total_seconds = TimeDecipher(Timer_TextBox.Text);
+            total_seconds -= seconds;
+            if (total_seconds < 0) total_seconds = 0;
+            Timer_TextBox.Text = TimeCipher();
+            if (isTimerOn) TimerWebSocketInstance.UpdateTime(TimeCipher());
+        }
+
+        /// <summary>Возврат отката: снова добавляет ранее вычтенное время (повторное нажатие кнопки в логах).</summary>
+        public void AddSeconds(long seconds)
+        {
+            if (seconds <= 0) return;
+            total_seconds = TimeDecipher(Timer_TextBox.Text);
+            total_seconds += seconds;
+            Timer_TextBox.Text = TimeCipher();
+            if (isTimerOn) TimerWebSocketInstance.UpdateTime(TimeCipher());
+        }
+
+        private void SetDonationAlertsConnected()
+        {
+            DAStatus_Label.Visibility = Visibility.Hidden;
+            if (settings_window != null && settings_window.IsVisible)
+            {
+                settings_window.ConnectDA_Button.Content = "Подключен";
+                settings_window.ConnectDA_Button.IsEnabled = false;
+            }
+        }
+
+        private void SetDonatePayConnected()
+        {
+            DPStatus_Label.Visibility = Visibility.Hidden;
+            if (settings_window != null && settings_window.IsVisible)
+            {
+                settings_window.ConnectDP_Button.Content = "Подключен";
+                settings_window.ConnectDP_Button.IsEnabled = false;
+            }
         }
 
         private long LoadRemainingTime()
         {
-            string filePath = $"{APP_DIRECTORY}\\remaining_time.txt";
-            if (File.Exists(filePath))
+            string filePath = Path.Combine(APP_DIRECTORY, "remaining_time.txt");
+            if (File.Exists(filePath) && long.TryParse(File.ReadAllText(filePath), out long value))
             {
-                return Convert.ToInt64(File.ReadAllText(filePath));
+                return value;
             }
             return 0;
         }
 
-        private void OnAnswerRecieved(string message)
-        {
-            string date = ExtractValue(message, "date");
-            string username = ExtractValue(message, "username");
-            string amount = ExtractValue(message, "amount");
+        // ---------------- Обработчики UI ----------------
 
-            if (message.Contains("alert_type: `1`"))      // Донат
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {  // Выполняем изменение UI в главном потоке
-                    total_seconds = TimeDecipher(Timer_TextBox.Text);
-                    long add_seconds = MoneyTimeConverterInstance.ConvertMoneyToTime(amount);
-                    total_seconds += add_seconds;
-                    Timer_TextBox.Text = TimeСipher();
-
-                    _logger.Log($"{date} (Донат) — {username} отправил {amount} {ExtractValue(message, "currency")} " +
-                        $"(Добавлено {add_seconds} секунд к таймеру)");
-                });
-            }
-            else if (message.Contains("true"))            // Файл открыт
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    settings_window.ConnectDA_Button.Content = "Подключен";
-                    settings_window.ConnectDA_Button.IsEnabled = false;
-
-                    DAStatus_Label.Content = "DonationAlerts подключен!";
-                    DAStatus_Label.Foreground = new SolidColorBrush(Color.FromRgb(6, 118, 85));
-                    DAStatus_Label.Margin = new Thickness(168, 0, 153, 0);
-                });
-            }
-            else if (message.Contains("alert_type: `11`"))    // Twitch Битсы
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Twitch Битсы) — {username} отправил {amount} Bits"); });
-            }
-            else if (message.Contains("alert_type: `16`"))    // Подписки подаренные каналу Twitch
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Подписки подаренные каналу Twitch) — {username} подарил {amount} подписок"); });
-            }
-            else if (message.Contains("alert_type: `17`"))    // Рейд Twitch
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Рейд Twitch) — {username} зарейдил с {amount} зрителями"); });
-            }
-            else if (message.Contains("alert_type: `6`"))    // Бесплатная подписка Twitch
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Бесплатная подписка Twitch) — {username} зафолловился на канал"); });
-            }
-            else if (message.Contains("alert_type: `4`"))    // Платная подписка Twitch
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Платная подписка Twitch) — {username} оформил платную подписку на канал"); });
-            }
-            else if (message.Contains("alert_type: `13`"))    // Подарочные подписки Twitch
-            {
-                Application.Current.Dispatcher.Invoke(() => { _logger.Log($"{date} (Подарочные подписки Twitch) — {username} подарил {amount} подписок"); });
-            }
-            else if (message.Contains(". Возможно, вы используете VPN."))
-            {
-                Application.Current.Dispatcher.Invoke(() => { MessageBox.Show(message); });
-            }
-        }
-
-        // Событие на клик по кнопке
         private void StartTimer_Click(object sender, RoutedEventArgs e)
         {
-            isTimerOn = !isTimerOn; // Переключаем состояние
-
-            if (Regex.IsMatch(Timer_TextBox.Text, @"^(?:[0-9]{1,4}):[0-6][0-9]:[0-6][0-9]$")) // Проверка на соответствие формату
-            {
-                total_seconds = TimeDecipher(Timer_TextBox.Text);
-                ChangeStartIcon(); // Смена иконки
-                InitializeTimer();
-            }
-            else
+            if (!Regex.IsMatch(Timer_TextBox.Text, @"^(?:[0-9]{1,4}):[0-6][0-9]:[0-6][0-9]$"))
             {
                 MessageBox.Show("Введен неверный формат", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
+
+            isTimerOn = !isTimerOn;
+            total_seconds = TimeDecipher(Timer_TextBox.Text);
+            ChangeStartIcon();
+            if (isTimerOn) InitializeTimer();
         }
 
         private void Settings_Click(object sender, RoutedEventArgs e)
         {
-            if (settings_window == null || !settings_window.IsVisible)  // Проверка, открыто ли уже окно с настройками
+            if (settings_window == null || !settings_window.IsVisible)
             {
-                settings_window = new Settings(TimerWebSocketInstance, MoneyTimeConverterInstance, DonationWatcherInstance, AppConfigInstance);  // Передаем экземпляр в новое окно при создании
-                settings_window.Owner = this; // Устанавливаем основное окно владельцем
+                settings_window = new Settings(TimerWebSocketInstance, MoneyTimeConverterInstance,
+                    DonationAlertsInstance, DonatePayInstance, AppConfigInstance) { Owner = this };
                 settings_window.Show();
             }
-            else settings_window.Activate(); // активация существующего окна
+            else settings_window.Activate();
         }
 
         private void LogsWindow_Click(object sender, RoutedEventArgs e)
@@ -334,10 +285,32 @@ namespace Timer_for_Donaton
             _logger.OpenLogWindow();
         }
 
+        private void Theme_Click(object sender, RoutedEventArgs e)
+        {
+            ThemeManager.Toggle();
+            UpdateThemeButton();
+
+            // Сохраняем выбор темы, не трогая остальные настройки
+            var config = AppConfigInstance.LoadConfig();
+            config.DarkTheme = ThemeManager.Current == ThemeManager.AppTheme.Dark;
+            AppConfigInstance.SaveConfig(config);
+        }
+
+        private void UpdateThemeButton()
+        {
+            // В тёмной теме показываем солнце (перейти на светлую), в светлой — луну.
+            ThemeIcon.Data = (Geometry)FindResource(ThemeManager.Current == ThemeManager.AppTheme.Dark ? "Icon.Sun" : "Icon.Moon");
+        }
+
+        private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+        private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
-            File.WriteAllText($"{APP_DIRECTORY}\\remaining_time.txt", total_seconds.ToString());
-            _ = DonationWatcherInstance.StopListening();
+            File.WriteAllText(Path.Combine(APP_DIRECTORY, "remaining_time.txt"), total_seconds.ToString());
+            _ = DonationAlertsInstance.StopAsync();
+            _ = DonatePayInstance.StopAsync();
         }
     }
 }

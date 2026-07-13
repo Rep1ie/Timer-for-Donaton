@@ -1,43 +1,38 @@
-﻿using System;
-using System.Windows;
+using System;
 
 namespace Timer_for_Donaton.Classes
 {
+    /// <summary>
+    /// Конвертер денег в секунды по текущему курсу.
+    /// Замечание: класс не показывает MessageBox — валидацией и UI занимается вызывающий код
+    /// (разделение ответственностей).
+    /// </summary>
     public class MoneyTimeConverter
     {
-        long time;
-        long money;
-        float sec_per_ruble;
+        private double _secondsPerRuble;
 
-        public MoneyTimeConverter()
-        { }
+        public bool IsRateConfigured { get; private set; }
 
-        public void CurrentCourse(string PlusTime, string MinusMoney)
+        /// <summary>Устанавливает курс времени к деньгам. Возвращает false при неверных входных данных.</summary>
+        public bool SetRate(string plusTimeSeconds, string minusMoney)
         {
-            if (PlusTime == null || MinusMoney == null || PlusTime == "" || MinusMoney == "" ||
-                !IsNumeric(PlusTime) || !IsNumeric(MinusMoney))
+            if (!long.TryParse(plusTimeSeconds, out long seconds) ||
+                !long.TryParse(minusMoney, out long money) ||
+                money == 0)
             {
-                MessageBox.Show("Введите корректные значения в поля с временем и валютой", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                IsRateConfigured = false;
+                return false;
             }
 
-            time = Convert.ToInt64(PlusTime);
-            money = Convert.ToInt64(MinusMoney);
-
-            sec_per_ruble = (float)time / money;  // Рассчет секунд за 1 рубль
+            _secondsPerRuble = (double)seconds / money;
+            IsRateConfigured = true;
+            return true;
         }
 
-        public long ConvertMoneyToTime(string Donate)
+        /// <summary>Переводит сумму доната в секунды.</summary>
+        public long ConvertMoneyToTime(decimal donate)
         {
-            long time_sec = (long)(sec_per_ruble * Convert.ToInt64(Donate));
-            return time_sec;
-        }
-
-        private bool IsNumeric(string input)
-        {
-            long number;
-            bool isNumeric = long.TryParse(input, out number);
-            return isNumeric;
+            return (long)Math.Round(_secondsPerRuble * (double)donate);
         }
     }
 }

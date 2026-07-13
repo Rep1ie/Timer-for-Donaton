@@ -63,39 +63,9 @@ namespace Timer_for_Donaton.Properties {
         /// <summary>
         ///   Поиск локализованного ресурса типа System.Drawing.Bitmap.
         /// </summary>
-        internal static System.Drawing.Bitmap icon_copy {
-            get {
-                object obj = ResourceManager.GetObject("icon_copy", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Поиск локализованного ресурса типа System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap icon_pause {
-            get {
-                object obj = ResourceManager.GetObject("icon_pause", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Поиск локализованного ресурса типа System.Drawing.Bitmap.
-        /// </summary>
         internal static System.Drawing.Bitmap icon_settings {
             get {
                 object obj = ResourceManager.GetObject("icon_settings", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Поиск локализованного ресурса типа System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap icon_start {
-            get {
-                object obj = ResourceManager.GetObject("icon_start", resourceCulture);
                 return ((System.Drawing.Bitmap)(obj));
             }
         }
@@ -137,16 +107,6 @@ namespace Timer_for_Donaton.Properties {
             get {
                 object obj = ResourceManager.GetObject("TimerIcon1", resourceCulture);
                 return ((System.Drawing.Icon)(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   Поиск локализованного ресурса типа System.Drawing.Bitmap.
-        /// </summary>
-        internal static System.Drawing.Bitmap tooltip_icon {
-            get {
-                object obj = ResourceManager.GetObject("tooltip_icon", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
             }
         }
         

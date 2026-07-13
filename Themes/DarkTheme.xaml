@@ -1,0 +1,33 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Тёмная тема. Те же ключи, что и в LightTheme.xaml, но другие значения. -->
+
+    <SolidColorBrush x:Key="Brush.Window.Background" Color="#FF1E1E1E"/>
+    <SolidColorBrush x:Key="Brush.Surface"           Color="#FF252526"/>
+    <SolidColorBrush x:Key="Brush.SurfaceAlt"        Color="#FF2D2D30"/>
+
+    <SolidColorBrush x:Key="Brush.Text.Primary"      Color="#FFECECEC"/>
+    <SolidColorBrush x:Key="Brush.Text.Secondary"    Color="#FFB0B0B0"/>
+
+    <SolidColorBrush x:Key="Brush.Control.Background"   Color="#FF2D2D30"/>
+    <SolidColorBrush x:Key="Brush.Control.Border"       Color="#FF3F3F46"/>
+    <SolidColorBrush x:Key="Brush.Control.BorderHover"  Color="#FF007ACC"/>
+
+    <SolidColorBrush x:Key="Brush.Accent"      Color="#FF0E639C"/>
+    <SolidColorBrush x:Key="Brush.Accent.Text" Color="#FFFFFFFF"/>
+
+    <SolidColorBrush x:Key="Brush.Button.Background" Color="#FF333337"/>
+    <SolidColorBrush x:Key="Brush.Button.Hover"      Color="#FF3E3E42"/>
+    <SolidColorBrush x:Key="Brush.Button.Pressed"    Color="#FF094771"/>
+
+    <SolidColorBrush x:Key="Brush.Status.Error"   Color="#FFFF6B4A"/>
+    <SolidColorBrush x:Key="Brush.Status.Success" Color="#FF4EC94E"/>
+
+    <!-- Иконки и кастомный тайтлбар -->
+    <SolidColorBrush x:Key="Brush.Icon"        Color="#FFD4D4D4"/>
+    <SolidColorBrush x:Key="Brush.Icon.Muted"  Color="#FF9A9A9A"/>
+    <SolidColorBrush x:Key="Brush.Titlebar"    Color="#FF2D2D30"/>
+
+</ResourceDictionary>

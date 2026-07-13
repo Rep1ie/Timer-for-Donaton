@@ -1,279 +1,279 @@
 ﻿using System;
-using System.Threading.Tasks;
+using System.Drawing.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Drawing.Text;
+using System.Windows.Media;
 using Timer_for_Donaton.Classes;
 
 namespace Timer_for_Donaton
 {
+    /// <summary>
+    /// Логика взаимодействия для Settings.xaml
+    /// </summary>
     public partial class Settings : Window
     {
-        // Объявляем событие для изменения DALink
-        public event EventHandler<string> DALinkChanged;
+        private readonly TimerWebSocket TimerWebSocketInstance;
+        private readonly MoneyTimeConverter MoneyTimeConverterInstance;
+        private readonly DonationAlertsClient DonationAlertsInstance;
+        private readonly DonatePayClient DonatePayInstance;
+        private readonly AppConfig AppConfigInstance;
 
-        private TimerWebSocket TimerWebSocketInstance;           // Объект для управления сервером
-        private MoneyTimeConverter MoneyTimeConverterInstance;   // Объект для рассчета времени за донат
-        private DonationWatcher DonationWatcherInstance;
-        private AppConfig AppConfigInstance;
+        private bool _isLoaded = false;
 
-        public Settings(TimerWebSocket timerWebSocket, MoneyTimeConverter moneyTimeConverter, DonationWatcher donationWatcher, AppConfig appConfig)
+        public Settings(TimerWebSocket timerWebSocket, MoneyTimeConverter moneyTimeConverter,
+            DonationAlertsClient donationWatcher, DonatePayClient donatePayClient, AppConfig appConfig)
         {
             InitializeComponent();
 
-            TimerWebSocketInstance = timerWebSocket;              // Присваеваем экземпляр класса серверирования
-            MoneyTimeConverterInstance = moneyTimeConverter;      // Присваеваем экземпляр класса конвертирования
-            DonationWatcherInstance = donationWatcher;
+            TimerWebSocketInstance = timerWebSocket;
+            MoneyTimeConverterInstance = moneyTimeConverter;
+            DonationAlertsInstance = donationWatcher;
+            DonatePayInstance = donatePayClient;
             AppConfigInstance = appConfig;
 
-
-            DALinkChanged += OnDALinkChanged;
-
-            // Если сервер уже запущен, его нельзя запустить снова
-            if (TimerWebSocketInstance.IsServerStarted)
-            {
-                CreateOBSLink_Button.IsEnabled = false;
-                OBSLink_TextBox.Text = "http://localhost:8080/";
-            }
-
-            // Если уже подключен к DonationAlerts, то кнопка disabled
-            if (DonationWatcherInstance.isListening)
-            {
-                ConnectDA_Button.IsEnabled = false;
-            }
-
-            // Скан шрифтов на пк и добавление их в ComboBox
-            var fonts = new InstalledFontCollection();
-            foreach (var font in fonts.Families)
-            {
-                Font_ComboBox.Items.Add(font.Name);
-            }
-
-            // Загружаем сохраненный конфиг настроек и применяем к элементам управления
+            PopulateFonts();
             LoadSavedConfig();
+            ReflectConnectionState();
+            WireChangeTracking();
 
-            // Подписываемся на события изменения значений в настройках
-            DALink_PasswordBox.PasswordChanged += Control_ValueChanged;
-            PlusTime_TextBox.TextChanged += Control_ValueChanged;
-            MinusMoney_TextBox.TextChanged += Control_ValueChanged;
-            // Для комбобоксов динамически добавляем обработчики событий TextChanged, т.к. их по дефолту нет
-            Font_ComboBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(Control_ValueChanged));
-            TextColor_ComboBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(Control_ValueChanged));
-            BorderSize_ComboBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(Control_ValueChanged));
-            BorderColor_ComboBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(Control_ValueChanged));
+            _isLoaded = true;
 
-            // (TextColor_ComboBox.SelectedItem as ComboBoxItem)?.Content.ToString();  <----- интересная конструкция
-
-            // Отправляем в калькулятор курс времени к рублю
-            MoneyTimeConverterInstance.CurrentCourse(PlusTime: PlusTime_TextBox.Text, MinusMoney: MinusMoney_TextBox.Text);
+            // Начальное состояние: всё сохранено (зелёный индикатор, кнопка неактивна)
+            SetSaveState(false);
         }
 
-        private void Control_ValueChanged(object sender, EventArgs e)
+        private void PopulateFonts()
         {
-            // Проверка: изменилось ли значение в настройках
-            SaveSettings_Button.IsEnabled = true;
-        }
-
-        private string ConvertColor(string color)
-        {
-            string converted_color;
-            switch (color)
+            using (var fonts = new InstalledFontCollection())
             {
-                case "Нет":
-                    converted_color = "transparent";
-                    break;
-                case "Прозрачный":
-                    converted_color = "transparent";
-                    break;
-                case "Черный":
-                    converted_color = "black";
-                    break;
-                case "Белый":
-                    converted_color = "white";
-                    break;
-                case "Серый":
-                    converted_color = "grey";
-                    break;
-                case "Желтый":
-                    converted_color = "#FBE77D";
-                    break;
-                case "Оранжевый":
-                    converted_color = "#FEA351";
-                    break;
-                case "Красный":
-                    converted_color = "#F96266";
-                    break;
-                case "Розовый":
-                    converted_color = "#FE69B1";
-                    break;
-                case "Фиолетовый":
-                    converted_color = "#AA96DA";
-                    break;
-                case "Синий":
-                    converted_color = "#6883BA";
-                    break;
-                case "Голубой":
-                    converted_color = "#AEEEED";
-                    break;
-                case "Зеленый":
-                    converted_color = "#3A6B33";
-                    break;
-                default:
-                    converted_color = color;
-                    break;
+                foreach (var family in fonts.Families)
+                {
+                    Font_ComboBox.Items.Add(family.Name);
+                }
             }
-            
-            return converted_color;
         }
 
         private void LoadSavedConfig()
         {
             var config = AppConfigInstance.LoadConfig();
-
-            // Применение настроек к элементам управления
-            DALink_PasswordBox.Password = config.DALink;
+            DALink_PasswordBox.Password = config.DALink ?? "";
+            DPLink_PasswordBox.Password = config.DonatePayToken ?? "";
             PlusTime_TextBox.Text = config.PlusTime;
             MinusMoney_TextBox.Text = config.MinusMoney;
-            Font_ComboBox.SelectedValue = config.Font;
-            TextColor_ComboBox.SelectedValue = config.TextColor;
-            BorderSize_ComboBox.SelectedValue = config.BorderSize;
-            BorderColor_ComboBox.SelectedValue = config.BorderColor;
+            Font_ComboBox.Text = config.Font;
+            TextColor_ComboBox.Text = config.TextColor;
+            BorderSize_ComboBox.Text = config.BorderSize;
+            BorderColor_ComboBox.Text = config.BorderColor;
+            AutoConnect_CheckBox.IsChecked = config.AutoConnect;
         }
 
-        private void OnDALinkChanged(object sender, string newDALink)
+        private void ReflectConnectionState()
         {
-            string newAccessToken = ExtractAccessToken(newDALink) ?? "";
-            DonationWatcherInstance.UpdateAccessToken(newAccessToken);
+            if (DonationAlertsInstance.IsListening)
+            {
+                ConnectDA_Button.Content = "Подключен";
+                ConnectDA_Button.IsEnabled = false;
+            }
+            if (DonatePayInstance.IsListening)
+            {
+                ConnectDP_Button.Content = "Подключен";
+                ConnectDP_Button.IsEnabled = false;
+            }
         }
 
-        private string ExtractAccessToken(string URL)
+        /// <summary>Подписываемся на изменения полей, чтобы активировать кнопку «Сохранить».</summary>
+        private void WireChangeTracking()
         {
-            // Проверка на пустую строку или null
-            if (string.IsNullOrEmpty(URL))
-            {
-                return null;
-            }
-            // Поиск индекса "token="
-            int tokenIndex = URL.IndexOf("token=");
-            if (tokenIndex == -1)
-            {
-                return null;
-            }
+            TextChangedEventHandler onText = (s, e) => EnableSave();
+            SelectionChangedEventHandler onSelection = (s, e) => EnableSave();
 
-            string at = URL.Substring(URL.IndexOf("token=") + 6);
-            return at;
+            PlusTime_TextBox.TextChanged += onText;
+            MinusMoney_TextBox.TextChanged += onText;
+            Font_ComboBox.SelectionChanged += onSelection;
+            Font_ComboBox.AddHandler(TextBoxBase.TextChangedEvent, onText);
+            TextColor_ComboBox.SelectionChanged += onSelection;
+            TextColor_ComboBox.AddHandler(TextBoxBase.TextChangedEvent, onText);
+            BorderSize_ComboBox.SelectionChanged += onSelection;
+            BorderSize_ComboBox.AddHandler(TextBoxBase.TextChangedEvent, onText);
+            BorderColor_ComboBox.SelectionChanged += onSelection;
+            BorderColor_ComboBox.AddHandler(TextBoxBase.TextChangedEvent, onText);
+            AutoConnect_CheckBox.Checked += (s, e) => EnableSave();
+            AutoConnect_CheckBox.Unchecked += (s, e) => EnableSave();
         }
+
+        private void EnableSave()
+        {
+            if (_isLoaded) SetSaveState(true);
+        }
+
+        /// <summary>
+        /// Обновляет индикатор сохранения: красная точка/обводка — есть несохранённые изменения,
+        /// зелёная — всё сохранено.
+        /// </summary>
+        private void SetSaveState(bool hasUnsaved)
+        {
+            SaveSettings_Button.IsEnabled = hasUnsaved;
+            var brush = (Brush)FindResource(hasUnsaved ? "Brush.Status.Error" : "Brush.Status.Success");
+            SaveIndicator.Fill = brush;
+            SaveSettings_Button.BorderBrush = brush;
+            SaveSettings_Button.BorderThickness = new Thickness(2);
+            SaveIndicator.ToolTip = hasUnsaved
+                ? "Есть несохранённые изменения — нажмите «Сохранить»"
+                : "Все изменения сохранены";
+        }
+
+        // ---------------- Подключение сервисов ----------------
 
         private void ConnectDA_Button_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(DALink_PasswordBox.Password))
+            string token = ExtractAccessToken(DALink_PasswordBox.Password);
+            if (string.IsNullOrWhiteSpace(token))
             {
-                MessageBox.Show("Ссылка не может быть пустой", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Введите ссылку на виджет DonationAlerts.");
+                return;
             }
-            else if (DALink_PasswordBox.Password.IndexOf("token=") == -1)
-            {
-                MessageBox.Show("В указанном URL токен не найден", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            else
-            {
-                DonationWatcherInstance.UpdateAccessToken(ExtractAccessToken(DALink_PasswordBox.Password));
-                Task.Run(() => DonationWatcherInstance.StartListening(ExtractAccessToken(DALink_PasswordBox.Password)));
-            }
+
+            ConnectDA_Button.IsEnabled = false;
+            ConnectDA_Button.Content = "Подключение...";
+            // Долгоживущая задача — не дожидаемся завершения, статус обновит событие OnConnected.
+            _ = DonationAlertsInstance.StartAsync(token);
         }
+
+        private void ConnectDP_Button_Click(object sender, RoutedEventArgs e)
+        {
+            // ВАЖНО: для DonatePay нужен API-токен (donatepay.ru/page/api), а НЕ ссылка на виджет.
+            string token = DPLink_PasswordBox.Password?.Trim();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                MessageBox.Show("Введите API-токен DonatePay (со страницы https://donatepay.ru/page/api).");
+                return;
+            }
+
+            ConnectDP_Button.IsEnabled = false;
+            ConnectDP_Button.Content = "Подключение...";
+            _ = DonatePayInstance.StartAsync(token);
+        }
+
+        /// <summary>Извлекает token из ссылки на виджет; если token= не найден, возвращает ввод как есть.</summary>
+        internal static string ExtractAccessToken(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            const string key = "token=";
+            int idx = url.IndexOf(key, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return url.Trim();
+            string rest = url.Substring(idx + key.Length);
+            int amp = rest.IndexOf('&');
+            return (amp >= 0 ? rest.Substring(0, amp) : rest).Trim();
+        }
+
+        // ---------------- OBS ----------------
 
         private void CreateOBSLink_Button_Click(object sender, RoutedEventArgs e)
         {
-            // Передаем стили в экземпляр вебсокета
-            TimerWebSocketInstance.Font = Font_ComboBox.Text;                                    // Шрифт
-            TimerWebSocketInstance.TextColor = ConvertColor(TextColor_ComboBox.Text);            // Цвет текста
-            TimerWebSocketInstance.BorderSize = BorderSize_ComboBox.Text;                        // Размер обводки
-            TimerWebSocketInstance.BorderColor = ConvertColor(BorderColor_ComboBox.Text);        // Цвет контура
-
-            // Запускаем сервер
-            Task.Run(async () =>
+            if (!TimerWebSocketInstance.IsServerStarted)
             {
-                await TimerWebSocketInstance.StartServer();
-            });
-
+                _ = TimerWebSocketInstance.StartServer();
+            }
             OBSLink_TextBox.Text = "http://localhost:8080/";
-
-            CreateOBSLink_Button.IsEnabled = false;
         }
 
         private void CopyOBSLink_Button_Click(object sender, RoutedEventArgs e)
         {
-            try
+            if (string.IsNullOrWhiteSpace(OBSLink_TextBox.Text)) return;
+
+            // Clipboard.SetText периодически бросает COM/ExternalException, когда буфер обмена
+            // временно заблокирован другим процессом (частый баг WPF). Раньше это роняло программу —
+            // теперь оборачиваем в try с парой повторов.
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                if (OBSLink_TextBox.Text != "")
+                try
                 {
-                    Clipboard.SetText(OBSLink_TextBox.Text);
+                    Clipboard.SetDataObject(OBSLink_TextBox.Text, true);
+                    return;
+                }
+                catch (Exception)
+                {
+                    System.Threading.Thread.Sleep(80);
                 }
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message.Contains("0x800401D0") ? "Буфер обмена занят другой программой" : $"{ex}", "Предупреждение", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+
+            MessageBox.Show(
+                "Не удалось скопировать ссылку: буфер обмена занят другой программой. Скопируйте вручную: двойной клик по полю → Ctrl+C.",
+                "Буфер обмена занят", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+
+        private void OBSLink_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            OBSLink_TextBox.SelectAll();
+        }
+
+        // ---------------- Сохранение ----------------
 
         private void SaveSettings_Button_Click(object sender, RoutedEventArgs e)
         {
-            var config = new AppConfig
+            if (!MoneyTimeConverterInstance.SetRate(PlusTime_TextBox.Text, MinusMoney_TextBox.Text))
             {
-                DALink = DALink_PasswordBox.Password,
-                PlusTime = PlusTime_TextBox.Text,
-                MinusMoney = MinusMoney_TextBox.Text,
-                Font = Font_ComboBox.Text,
-                TextColor = TextColor_ComboBox.Text,
-                BorderSize = BorderSize_ComboBox.Text,
-                BorderColor = BorderColor_ComboBox.Text,
-            };
+                MessageBox.Show("Неверные значения начисления времени: укажите целые числа, рубли не равны 0.");
+                return;
+            }
+
+            var config = AppConfigInstance.LoadConfig();
+            config.DALink = DALink_PasswordBox.Password;
+            config.DonatePayToken = DPLink_PasswordBox.Password;
+            config.PlusTime = PlusTime_TextBox.Text;
+            config.MinusMoney = MinusMoney_TextBox.Text;
+            config.Font = Font_ComboBox.Text;
+            config.TextColor = TextColor_ComboBox.Text;
+            config.BorderSize = BorderSize_ComboBox.Text;
+            config.BorderColor = BorderColor_ComboBox.Text;
+            config.DarkTheme = ThemeManager.Current == ThemeManager.AppTheme.Dark;
+            config.AutoConnect = AutoConnect_CheckBox.IsChecked == true;
             AppConfigInstance.SaveConfig(config);
 
-            // Вызываем событие, чтобы оповестить об изменении
-            DALinkChanged?.Invoke(this, config.DALink);     // Для динамичного изменения токена в DonationWatcher
+            // Применяем стили к таймеру в OBS
+            TimerWebSocketInstance.Font = Font_ComboBox.Text;
+            TimerWebSocketInstance.TextColor = ConvertColor(TextColor_ComboBox.Text);
+            TimerWebSocketInstance.BorderSize = BorderSize_ComboBox.Text;
+            TimerWebSocketInstance.BorderColor = ConvertColor(BorderColor_ComboBox.Text);
+            _ = TimerWebSocketInstance.BroadcastStyles();
 
-            // Отправляем в калькулятор курс времени к рублю
-            MoneyTimeConverterInstance.CurrentCourse(PlusTime: PlusTime_TextBox.Text, MinusMoney: MinusMoney_TextBox.Text);
-
-            if (TimerWebSocketInstance.IsServerStarted)
-            {
-                // Обновляем стили в экземпляре WebSocket
-                TimerWebSocketInstance.Font = Font_ComboBox.Text;
-                TimerWebSocketInstance.TextColor = ConvertColor(TextColor_ComboBox.Text);
-                TimerWebSocketInstance.BorderSize = BorderSize_ComboBox.Text;
-                TimerWebSocketInstance.BorderColor = ConvertColor(BorderColor_ComboBox.Text);
-
-                // Обновляем сервер
-                Task.Run(async () =>
-                {
-                    await TimerWebSocketInstance.BroadcastStyles();
-                    await TimerWebSocketInstance.BroadcastTime();
-                });
-            }
-
-            SaveSettings_Button.IsEnabled = false;
+            SetSaveState(false);
         }
 
-        // Выделить весь текстбокс даблкликом
-        private void OBSLink_TextBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        /// <summary>Переводит русское название цвета в CSS-цвет.</summary>
+        private string ConvertColor(string color)
         {
-            if (sender is TextBox OBSLink_TextBox)
+            switch (color)
             {
-                OBSLink_TextBox.SelectAll();
+                case "Нет":
+                case "Прозрачный": return "transparent";
+                case "Черный": return "black";
+                case "Белый": return "white";
+                case "Серый": return "grey";
+                case "Желтый": return "#FBE77D";
+                case "Оранжевый": return "#FEA351";
+                case "Красный": return "#F96266";
+                case "Розовый": return "#FE69B1";
+                case "Фиолетовый": return "#AA96DA";
+                case "Синий": return "#6883BA";
+                case "Голубой": return "#AEEEED";
+                case "Зеленый": return "#3A6B33";
+                default: return color;
             }
         }
 
-        // При нажатии Enter сохранялись настройки
+        // ---------------- Прочее ----------------
+
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.Key == Key.Enter)
+            if (e.Key == Key.Enter && SaveSettings_Button.IsEnabled)
             {
-                if (SaveSettings_Button.IsEnabled)
-                {
-                    SaveSettings_Button_Click(sender, e);
-                }
+                SaveSettings_Button_Click(sender, e);
             }
         }
+
+        private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }
 }

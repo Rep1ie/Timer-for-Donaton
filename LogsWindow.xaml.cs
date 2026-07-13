@@ -1,37 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
+using Timer_for_Donaton.Classes;
 
 namespace Timer_for_Donaton
 {
     public partial class LogsWindow : Window
     {
-        public LogsWindow()
+        private readonly Logger _logger;
+
+        public LogsWindow(Logger logger)
         {
             InitializeComponent();
+
+            _logger = logger;
+            Logs_ItemsControl.ItemsSource = _logger.Entries;
+
+            // Автопрокрутка вниз при добавлении новой записи.
+            _logger.Entries.CollectionChanged += (s, e) => ScrollToEnd();
+            Loaded += (s, e) => ScrollToEnd();
         }
 
-        public void AddLog(string message)
+        private void ScrollToEnd()
         {
-            Paragraph paragraph = new Paragraph(new Run(message))
-            {
-                FontSize = 14,
-                Margin = new Thickness(1)
-            };
-
-            Logs_RichTextBox.Document.Blocks.Add(paragraph);
-
-            Logs_RichTextBox.ScrollToEnd();
+            // BeginInvoke — чтобы прокрутка выполнилась после пересчёта разметки.
+            Dispatcher.BeginInvoke(new Action(() => Logs_ScrollViewer.ScrollToEnd()));
         }
+
+        private void Rollback_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is LogEntry entry)
+            {
+                _logger.ToggleRollback(entry);
+            }
+        }
+
+        private void ClearLogs_Click(object sender, RoutedEventArgs e)
+        {
+            var result = MessageBox.Show("Очистить всю историю логов? Это действие нельзя отменить.",
+                "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes) _logger.ClearHistory();
+        }
+
+        private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+        private void Close_Click(object sender, RoutedEventArgs e) => Close();
     }
 }

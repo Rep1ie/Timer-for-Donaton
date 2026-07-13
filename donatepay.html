@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<title>DonatePay</title>
+	</head>
+	<body>
+	</body>
+	<script src="https://cdn.jsdelivr.net/gh/centrifugal/centrifuge-js@2.X.X/dist/centrifuge.min.js"></script>
+    <script>
+        async function start()
+        {
+            // Создание экземпляра объекта Centrifuge
+            window.centrifuge = new Centrifuge('wss://centrifugo.donatepay.ru:43002/connection/websocket',
+            {
+                subscribeEndpoint: 'https://donatepay.ru/api/v2/socket/token',
+                subscribeParams:   { access_token: 'hwXvA2VsWLNYKq9FVsy4HaZkvzdmgl29ydHbrWcp5YQ01KEAfI9WRpkIxjdt' },
+                disableWithCredentials: true
+            });
+
+            // Предоставляем токен подключения
+            centrifuge.setToken(await getToken())
+
+            // Подписываемся на канал пользователя $public:USER_ID
+            centrifuge.subscribe("$public:1330635", function (message)
+            {
+                console.log('Донат получен!', message);
+
+                // Выводим все новые сообщения, полученные с канала в консоль
+                sendToLocalServer(message.data)  // Берем только сообщение
+            });
+
+            centrifuge.on('error', (e) => {
+                console.log('Ошибка WebSocket: ', e)
+            })
+
+            centrifuge.on('subscribe', (e) => {
+                console.log('Подписка выполнена: ', e)
+            })
+
+            centrifuge.on('connect', (e) => {
+                console.log(e)
+
+                sendToLocalServer("true")
+            })
+
+            // Метод фактического подключения к серверу
+            centrifuge.connect();
+        }
+
+        // Request a token to connect to Centrifuge
+        async function getToken()
+        {
+            var res = await fetch('https://donatepay.ru/api/v2/socket/token',
+            {
+                method: 'post',
+                body: JSON.stringify({ access_token: 'hwXvA2VsWLNYKq9FVsy4HaZkvzdmgl29ydHbrWcp5YQ01KEAfI9WRpkIxjdt' }),
+                headers: { "Content-Type": "application/json" }
+            })
+
+            return (await res.json()).token
+        }
+
+        // WebSocket для передачи данных в локальный сервер (C# приложение)
+        const localWs = new WebSocket("ws://localhost:5000");
+
+        localWs.onopen = () => {
+            console.log("Локальный WebSocket подключен.");
+        };
+        localWs.onerror = (e) => {
+            console.log("Ошибка в подключении локального WebSocket:", e);
+        };
+        localWs.onclose = () => {
+            console.log("Локальный WebSocket соединение закрыто.");
+        };
+
+        // Отправка данных о донатах в локальное приложение
+        function sendToLocalServer(data)
+        {
+            if (localWs.readyState === WebSocket.OPEN)
+            {
+                localWs.send(JSON.stringify(data));
+                console.log('Данные отправлены в локальное приложение:', data);
+            }
+            else
+            {
+                console.error('Не удалось отправить данные, WebSocket локального приложения не подключен.');
+            }
+        }
+
+        // Запуск подключения
+        start()
+	</script>
+</html>
+
