@@ -14,7 +14,7 @@
             window.centrifuge = new Centrifuge('wss://centrifugo.donatepay.ru:43002/connection/websocket',
             {
                 subscribeEndpoint: 'https://donatepay.ru/api/v2/socket/token',
-                subscribeParams:   { access_token: 'hwXvA2VsWLNYKq9FVsy4HaZkvzdmgl29ydHbrWcp5YQ01KEAfI9WRpkIxjdt' },
+                subscribeParams:   { access_token: '' },
                 disableWithCredentials: true
             });
 
@@ -54,7 +54,7 @@
             var res = await fetch('https://donatepay.ru/api/v2/socket/token',
             {
                 method: 'post',
-                body: JSON.stringify({ access_token: 'hwXvA2VsWLNYKq9FVsy4HaZkvzdmgl29ydHbrWcp5YQ01KEAfI9WRpkIxjdt' }),
+                body: JSON.stringify({ access_token: '' }),
                 headers: { "Content-Type": "application/json" }
             })
 
